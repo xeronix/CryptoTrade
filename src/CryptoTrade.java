@@ -16,16 +16,16 @@ import java.util.Map;
 import java.util.Map.Entry;
 
 public class CryptoTrade {
-	private static String tradingDataFilePath = System.getenv("TRADE_DATA_FILE_PATH");//"C:\\Users\\vmehta\\Dropbox\\Vipul\\Koinex_Trade.csv";
-	private static String walletDataFilePath = System.getenv("WALLET_DATA_FILE_PATH");//"C:\\Users\\vmehta\\Dropbox\\Vipul\\Koinex_Wallet.csv";
+	private static String tradingDataFilePath = System.getenv("KOINEX_TRADE_DATA_FILE_PATH");//"C:\\Users\\vmehta\\Dropbox\\Vipul\\Koinex_Trade.csv";
+	private static String walletDataFilePath = System.getenv("KOINEX_WALLET_DATA_FILE_PATH");//"C:\\Users\\vmehta\\Dropbox\\Vipul\\Koinex_Wallet.csv";
 
 	// currency -> tradingData map
 	private final static Map<String, List<TradeData>> tradeDataMap = new HashMap<String, List<TradeData>>();
 	private final static Map<String, List<WalletTransactionData>> walletTransactionDataMap = new HashMap<String, List<WalletTransactionData>>();
 
-	private final static BigDecimal targetProfit = new BigDecimal("1000");
+	private static BigDecimal targetProfitPercentage;
 	
-	private final static String tradingStartDate = "23-10-2017 00:00";
+	private static String tradingStartDate = System.getenv("KOINEX_TRADE_START_DATE"); ;//"23-10-2017 00:00";
 	
 	private final static BigDecimal daysInTrade;
 	
@@ -45,6 +45,18 @@ public class CryptoTrade {
 		
 		if (walletDataFilePath == null) {
 			walletDataFilePath = "C:\\Users\\vmehta\\Dropbox\\Vipul\\Koinex_Wallet.csv";
+		}
+		
+		if (tradingStartDate == null) {
+			tradingStartDate = "23-10-2017 00:00";
+		}
+		
+		String targetProfitPercentageString = System.getenv("KOINEX_TARGET_PROFIT");
+		
+		if (targetProfitPercentageString == null) {
+			targetProfitPercentage = new BigDecimal("20");
+		} else {
+			targetProfitPercentage = new BigDecimal("targetProfitPercentageString");
 		}
 		
 		Date dateOb = null;
@@ -69,10 +81,13 @@ public class CryptoTrade {
 		fetchWalletTransactionData();
 		analyzeWalletTransactionData();
 		
-		System.out.println("Total Amount Deposited Till Now: INR:" + precision.format(totalDeposit));
-		System.out.println("Total Amount Withdrawn Till Now: INR:" + precision.format(totalWithdrawal));
-		System.out.println("Total Referral Earning Till Now: INR:" + precision.format(totalReferralEarning));
-		System.out.println("Total Profit(with referral earning) Earned Till Now: INR:" + precision.format(totalProfit.add(totalReferralEarning)));
+		System.out.println("Total Amount Deposited: INR:" + precision.format(totalDeposit));
+		System.out.println("Total Amount Withdrawn: INR:" + precision.format(totalWithdrawal));
+		System.out.println("Total Referral Earning: INR:" + precision.format(totalReferralEarning));
+		System.out.println("Total Trade Reward: INR:" + precision.format(totalTradeReward));
+
+		System.out.println("Total Profit(with referral earning and trade reward): INR:"
+				+ precision.format(totalProfit.add(totalReferralEarning).add(totalTradeReward)));
 		System.out.println("Total Current Investment: INR:" + precision.format(totalInvestment));
 		System.out.println("Total Profit Invested in Current Investment: INR:"
 				+ precision.format(totalProfit.add(totalReferralEarning).subtract(totalWithdrawal)));
@@ -249,11 +264,16 @@ public class CryptoTrade {
 				System.out.println("Balance Volume: " + volume);
 				System.out.println("Effective Price Paid Per Unit For Balance Volume: INR:"
 						+ precision.format(effectivePricePerUnit));
+				
+				BigDecimal effectiveInvestment = effectivePricePerUnit.multiply(volume);
+				
 				System.out.println("Total Amount Paid For Balance Volume: INR:"
-						+ precision.format(effectivePricePerUnit.multiply(volume)));
+						+ precision.format(effectiveInvestment));
 
-				System.out.println("For Target Profit of INR:" + targetProfit + " Sell at " 
-						+ precision.format(targetProfit.divide(volume, 6, BigDecimal.ROUND_HALF_UP).add(effectivePricePerUnit)));
+				BigDecimal targetProfit = targetProfitPercentage.multiply(new BigDecimal("0.01")).multiply(effectiveInvestment);
+						
+				System.out.println("For Target Profit of " + targetProfitPercentage + "%, sell at "
+						+ precision.format(targetProfit.add(effectiveInvestment)));
 			}
 			
 			totalProfit = totalProfit.add(profit);
