@@ -4,6 +4,8 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.math.BigDecimal;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.text.DecimalFormat;
 import java.text.ParseException;
 import java.util.ArrayList;
@@ -14,6 +16,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+
+import org.json.JSONObject;
 
 public class CryptoTrade {
 	private static String tradingDataFilePath = System.getenv("KOINEX_TRADE_DATA_FILE_PATH");//"C:\\Users\\vmehta\\Dropbox\\Vipul\\Koinex_Trade.csv";
@@ -29,15 +33,17 @@ public class CryptoTrade {
 	
 	private final static BigDecimal daysInTrade;
 	
-	private static BigDecimal totalProfit = BigDecimal.ZERO;
+	private static BigDecimal totalSellingProfit = BigDecimal.ZERO;
+	private static BigDecimal totalHoldingProfit = BigDecimal.ZERO;
 	private static BigDecimal totalDeposit = BigDecimal.ZERO;
 	private static BigDecimal totalWithdrawal = BigDecimal.ZERO;
 	private static BigDecimal totalReferralEarning = BigDecimal.ZERO;
 	private static BigDecimal totalInvestment = BigDecimal.ZERO;
+	private static BigDecimal totalMarketValue = BigDecimal.ZERO;
 	private static BigDecimal totalTradeReward = BigDecimal.ZERO;
-	
-	private static final DecimalFormat precision = new DecimalFormat("#0.0000");
 
+	private static final DecimalFormat precision = new DecimalFormat("#0.0000");
+	
 	static {
 		if (tradingDataFilePath == null) {
 			tradingDataFilePath = "C:\\Users\\vmehta\\Dropbox\\Vipul\\Koinex_Trade.csv";
@@ -56,7 +62,7 @@ public class CryptoTrade {
 		if (targetProfitPercentageString == null) {
 			targetProfitPercentage = new BigDecimal("20");
 		} else {
-			targetProfitPercentage = new BigDecimal("targetProfitPercentageString");
+			targetProfitPercentage = new BigDecimal(targetProfitPercentageString);
 		}
 		
 		Date dateOb = null;
@@ -75,6 +81,8 @@ public class CryptoTrade {
 	}
 	
 	public static void main(String[] args) throws Exception {
+		fetchKoinexData();
+		
 		fetchTradingData();
 		analyzeTradingData();
 
@@ -85,20 +93,74 @@ public class CryptoTrade {
 		System.out.println("Total Amount Withdrawn: INR:" + precision.format(totalWithdrawal));
 		System.out.println("Total Referral Earning: INR:" + precision.format(totalReferralEarning));
 		System.out.println("Total Trade Reward: INR:" + precision.format(totalTradeReward));
+		System.out.println("Total Selling Profit: INR: " + precision.format(totalSellingProfit));
+		System.out.println("Total Holding Profit: INR:" + totalHoldingProfit);
 
-		System.out.println("Total Profit(with referral earning and trade reward): INR:"
-				+ precision.format(totalProfit.add(totalReferralEarning).add(totalTradeReward)));
-		System.out.println("Total Current Investment: INR:" + precision.format(totalInvestment));
-		System.out.println("Total Profit Invested in Current Investment: INR:"
-				+ precision.format(totalProfit.add(totalReferralEarning).subtract(totalWithdrawal)));
+		BigDecimal totalProfit = totalSellingProfit.add(totalTradeReward).add(totalReferralEarning);
+		BigDecimal totalNetProfit = totalProfit.add(totalHoldingProfit);
+		System.out.println("Total Net Profit = Total Selling Profit + Total Holding Profit: INR:"
+				+ precision.format(totalNetProfit));
 		
-		// double returnRate = totalProfit / totalInvestment * 100.0D;
-		BigDecimal returnRate = totalProfit.divide(totalInvestment, 6, BigDecimal.ROUND_HALF_UP)
+		System.out.println("Total Current Investment: INR:" + precision.format(totalInvestment));
+		System.out.println("Total Market Value of Current Investment: INR:" + precision.format(totalMarketValue));
+		
+		BigDecimal totalWalletMoney = totalDeposit.subtract(totalWithdrawal).add(totalProfit).subtract(totalInvestment);
+		
+		System.out.println("Total Unused Wallet Money: INR:" + precision.format(totalWalletMoney));
+		
+		System.out.println("Total Amount Deposited + Total Amount Withdrawn + Total Net Profit = INR:"
+				+ precision.format(totalDeposit.subtract(totalWithdrawal).add(totalNetProfit)));
+		
+		// double returnRate = totalNetProfit / totalInvestment * 100.0D;
+		BigDecimal returnRate = totalNetProfit.divide(totalDeposit, 6, BigDecimal.ROUND_HALF_UP)
 				.multiply(new BigDecimal("100"));
 		
 		System.out.println("Absolute Return : " + returnRate + "%");
 		System.out.println("Estimated Yearly Return Without Compounding Factor: "
 				+ (returnRate.divide(daysInTrade, 6, BigDecimal.ROUND_HALF_UP).multiply(new BigDecimal("365"))).toString() + "%");
+	}
+	
+	private static void fetchKoinexData() throws IOException {
+		final String koinexUrl = "https://koinex.in/api/ticker";
+		URL url =  new URL(koinexUrl);
+		
+		HttpURLConnection conn = null; 
+		BufferedReader br = null;
+		String jsonData = "";
+
+		try {
+			conn = (HttpURLConnection) url.openConnection();
+			br =  new BufferedReader(new InputStreamReader(conn.getInputStream()));
+			String line = "";
+			
+			while ((line = br.readLine()) != null) {
+				jsonData += line;
+			} 
+		} finally {
+			if (conn != null) {
+				conn.disconnect();
+			}
+			
+			if (br != null) {
+				br.close();
+			}
+		}
+		
+		if (jsonData.length() == 0) {
+			throw new RuntimeException("Failed to fetch data from Koinex URL: " + koinexUrl);
+		}
+		
+		JSONObject json = new JSONObject(jsonData);
+		
+		final String priceKey = "prices";
+		
+		JSONObject priceObject = json.getJSONObject(priceKey);
+		
+		Currency.bitcoinPrice = new BigDecimal(priceObject.getString("BTC"));
+		Currency.bitcoinCashPrice = new BigDecimal(priceObject.getString("BCH"));
+		Currency.etherPrice = new BigDecimal(priceObject.getString("ETH"));
+		Currency.ripplePrice = new BigDecimal(priceObject.getString("XRP"));
+		Currency.liteCoinPrice = new BigDecimal(priceObject.getString("LTC"));
 	}
 	
 	private static void fetchWalletTransactionData() throws IOException {
@@ -256,8 +318,11 @@ public class CryptoTrade {
 				}
 			}
 
-			System.out.println("Profit Earned By Selling Till Now: INR:" + precision.format(profit));
+			BigDecimal currentPrice = Currency.getPrice(currency);
+			System.out.println("Current Market Price : " + precision.format(currentPrice));
 
+			System.out.println("Profit Earned By Selling Till Now: INR:" + precision.format(profit));
+								
 			if (volume.compareTo(BigDecimal.ZERO) == 0) {
 				System.out.println("No Balance");
 			} else {
@@ -267,16 +332,32 @@ public class CryptoTrade {
 				
 				BigDecimal effectiveInvestment = effectivePricePerUnit.multiply(volume);
 				
-				System.out.println("Total Amount Paid For Balance Volume: INR:"
+				totalInvestment = totalInvestment.add(effectiveInvestment);
+				
+				System.out.println("Amount Paid For Balance Volume: INR:"
 						+ precision.format(effectiveInvestment));
+				
+				BigDecimal currentMarketValue = currentPrice.multiply(volume);
+				BigDecimal currentHoldingProfit = currentMarketValue.subtract(effectiveInvestment);
+
+				totalMarketValue = totalMarketValue.add(currentMarketValue);
+				
+				System.out.println("Current Market Value of Volume: INR:" + currentMarketValue);
+
+				System.out.println("Profit on Current Volume Held: INR: "+ precision.format(currentHoldingProfit));
+				
+				System.out.println("Net Profit = Profit Earned By Selling + Profit on Current Volume: INR: "
+						+ precision.format(profit.add(currentHoldingProfit)));
 
 				BigDecimal targetProfit = targetProfitPercentage.multiply(new BigDecimal("0.01")).multiply(effectiveInvestment);
 						
 				System.out.println("For Target Profit of " + targetProfitPercentage + "%, sell at "
-						+ precision.format(targetProfit.add(effectiveInvestment)));
+						+ precision.format(targetProfit.add(effectiveInvestment).divide(volume, 4, BigDecimal.ROUND_HALF_UP)));
+				
+				totalHoldingProfit = totalHoldingProfit.add(currentHoldingProfit);
 			}
 			
-			totalProfit = totalProfit.add(profit);
+			totalSellingProfit = totalSellingProfit.add(profit);
 			
 			System.out.println();
 		}
@@ -312,8 +393,6 @@ public class CryptoTrade {
 					throw new RuntimeException("Inconsistent Wallet Data :  Invalid transaction type. " + data.toString());
 				}
 			}
-		}
-		
-		totalInvestment = totalDeposit.add(totalProfit).subtract(totalWithdrawal).add(totalReferralEarning);
+		}		
 	}
 }

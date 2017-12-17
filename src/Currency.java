@@ -1,3 +1,5 @@
+import java.math.BigDecimal;
+
 public enum Currency {
 	BITCOIN,
 	BITCOINCASH,
@@ -15,6 +17,29 @@ public enum Currency {
 		case "LTC/INR" : return LITECOIN;
 		}
 		
-		return null;
+		throw new RuntimeException("Inconsistent Wallet Data : Invalid Currency Key: " + key);
 	}
+	
+	public static BigDecimal getPrice(String currencyName) {
+		switch(currencyName) {
+		case "BITCOIN":
+			return bitcoinPrice;
+		case "BITCOINCASH":
+			return bitcoinCashPrice;
+		case "RIPPLE":
+			return ripplePrice;
+		case "ETHER":
+			return etherPrice;
+		case "LITECOIN":
+			return liteCoinPrice;
+		}
+		
+		throw new RuntimeException("Inconsistent Wallet Data : Invalid Currency Name: " + currencyName);
+	}
+	
+	public static BigDecimal bitcoinPrice;
+	public static BigDecimal bitcoinCashPrice;
+	public static BigDecimal etherPrice;
+	public static BigDecimal ripplePrice;
+	public static BigDecimal liteCoinPrice;
 }
